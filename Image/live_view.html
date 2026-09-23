@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MDP Live Detections</title>
+<style>
+  :root {
+    --bg:#0f1419; --panel:#1a2129; --line:#2c3742;
+    --text:#e6edf3; --dim:#8b98a5; --ok:#3fb950; --bad:#f85149; --accent:#58a6ff;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text);
+         font:14px/1.5 -apple-system,"Segoe UI",Roboto,sans-serif; }
+  header { position:sticky; top:0; z-index:5; background:var(--panel);
+           border-bottom:1px solid var(--line); padding:12px 20px;
+           display:flex; align-items:center; gap:18px; flex-wrap:wrap; }
+  h1 { font-size:16px; margin:0; font-weight:600; }
+  .stat { color:var(--dim); font-size:13px; }
+  .stat b { color:var(--text); font-variant-numeric:tabular-nums; }
+  .dot { width:8px; height:8px; border-radius:50%; background:var(--ok);
+         display:inline-block; margin-right:6px; }
+  .dot.off { background:var(--bad); }
+  main { padding:20px; display:grid; gap:16px;
+         grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); }
+  .card { background:var(--panel); border:1px solid var(--line);
+          border-radius:10px; overflow:hidden; }
+  .card.miss { border-color:#5a2b2b; }
+  .card img { width:100%; display:block; background:#000;
+              aspect-ratio:4/3; object-fit:contain; }
+  .meta { padding:10px 14px; display:flex; justify-content:space-between;
+          align-items:baseline; gap:10px; }
+  .obs { font-size:15px; font-weight:600; }
+  .tag { font-size:12px; padding:2px 9px; border-radius:5px; font-weight:600; }
+  .tag.ok { background:var(--ok); color:#04210c; }
+  .tag.no { background:var(--bad); color:#2b0505; }
+  .empty { color:var(--dim); padding:60px 20px; text-align:center; grid-column:1/-1; }
+</style>
+</head>
+<body>
+<header>
+  <h1>MDP Live Detections</h1>
+  <span class="stat"><span class="dot" id="dot"></span><span id="conn">connecting</span></span>
+  <span class="stat">snaps <b id="total">0</b></span>
+  <span class="stat">detected <b id="hits">0</b></span>
+</header>
+
+<main id="grid"><div class="empty">Waiting for the first snapshot&hellip;</div></main>
+
+<script>
+let signature = '';
+
+async function tick() {
+  try {
+    const r = await fetch('/api/shots', { cache: 'no-store' });
+    if (!r.ok) throw new Error(r.status);
+    const d = await r.json();
+    setConn(true);
+    render(d);
+  } catch (e) {
+    setConn(false);
+  }
+}
+
+function setConn(ok) {
+  document.getElementById('dot').className = ok ? 'dot' : 'dot off';
+  document.getElementById('conn').textContent = ok ? 'live' : 'viewer offline';
+}
+
+function render(d) {
+  document.getElementById('total').textContent = d.count;
+  document.getElementById('hits').textContent = d.hits;
+
+  // Only touch the DOM when something actually changed, so images do not flicker.
+  const sig = d.shots.map(s => s.file + ':' + s.mtime).join('|');
+  if (sig === signature) return;
+  signature = sig;
+
+  const grid = document.getElementById('grid');
+  if (!d.shots.length) {
+    grid.innerHTML = '<div class="empty">Waiting for the first snapshot&hellip;</div>';
+    return;
+  }
+
+  grid.innerHTML = d.shots.map(s => `
+    <div class="card${s.detected ? '' : ' miss'}">
+      <img src="/img/${encodeURIComponent(s.file)}?v=${s.mtime}"
+           alt="obstacle ${esc(s.obstacle)}" onerror="this.style.display='none'">
+      <div class="meta">
+        <span class="obs">Obstacle ${esc(s.obstacle)}</span>
+        <span class="tag ${s.detected ? 'ok' : 'no'}">${s.detected ? 'detected' : 'no detection'}</span>
+      </div>
+    </div>`).join('');
+}
+
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, c =>
+    ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+}
+
+tick();
+setInterval(tick, 1000);
+</script>
+</body>
+</html>

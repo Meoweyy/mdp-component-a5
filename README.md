@@ -9,20 +9,57 @@ valid image is found.
 
 ```
 RPI/         runs on the Raspberry Pi
+Image/       runs on the laptop — YOLOv8 detection server
 firmware/    STM32F407VET6 sources (drop into MDP/Core/ of the CubeIDE project)
 ```
 
+The Pi takes the photo (`raspistill`, inside `a5.py`) and POSTs it to the
+laptop; the laptop runs the model and answers with the image id. Both halves
+are in this repo — neither works alone.
+
 ## Running it
 
-On the laptop, start the image server. On the Pi:
+### 1. Laptop — image server
+
+```bash
+cd Image
+python -m venv .venv
+.venv\Scripts\activate            # Windows;  source .venv/bin/activate on Mac/Linux
+pip install -r requirements.txt
+python object_detection_server.py
+```
+
+Listens on port **4000**. Do not commit or copy a `.venv` between machines —
+a virtualenv hardcodes absolute paths to the Python that built it and will
+fail with `No Python at '...'` on anyone else's computer. Build your own.
+
+Browse `http://localhost:4000/` for the detection gallery, or run
+`python live_view.py` for the live viewer on port **4100**.
+
+The Bullseye marker needs `INFERENCE_SIZE = 960`. Measured on a real snap
+photo it is missed entirely at 416 and 640, and found at 0.64 confidence at
+960 — about 150 ms instead of 30 ms. Symbols detect fine at every size, so
+960 costs a little latency and loses nothing. Do not lower it.
+
+### 2. Pi — the run
 
 ```bash
 sudo pkill -f _center        # release /dev/ttyACM0
 python3 a5.py --align 28
 ```
 
-The laptop must be on the robot network (192.168.23.x) — `a5.py` posts to
-`http://192.168.23.11:4000/detect`.
+### Network
+
+Both machines must be on the robot network (192.168.23.x). `a5.py` has the
+server address hardcoded at the top:
+
+```python
+IMAGE_SERVER = "http://192.168.23.11:4000/detect"
+```
+
+If the laptop running the server picks up a different address, edit that line.
+`DISPLAY_IP` in `object_detection_server.py` is cosmetic — it only affects the
+"Running on" banner.
 
 ### Options
 
